@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web终端控制台</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 20px; }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background: #eee; }
+        .terminal { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; 
+                    height: 400px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; }
+        .controls { margin-bottom: 10px; display: flex; gap: 10px; }
+        input { flex-grow: 1; padding: 8px; }
+        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; }
+        .os-tag { padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+        .win { background: #00a4ef; color: white; }
+        .lin { background: #fca326; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>已连接客户端</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>主机名</th>
+                    <th>系统</th>
+                    <th>地址</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="client-list"></tbody>
+        </table>
+
+        <div id="console-section" style="display:none;">
+            <h3 id="current-target">正在操作: </h3>
+            <div class="controls">
+                <input type="text" id="cmd-input" placeholder="输入系统命令 (如: dir, ls, ipconfig)...">
+                <button onclick="sendCommand()">执行</button>
+            </div>
+            <div class="terminal" id="output">等待指令...</div>
+        </div>
+    </div>
+
+    <script>
+        let selectedId = null;
+
+        async function fetchClients() {
+            const res = await fetch('/api/clients');
+            const data = await res.json();
+            const tbody = document.getElementById('client-list');
+            tbody.innerHTML = data.map(c => `
+                <tr>
+                    <td>${c.id}</td>
+                    <td>${c.name}</td>
+                    <td><span class="os-tag ${c.os === 'Windows' ? 'win' : 'lin'}">${c.os}</span></td>
+                    <td>${c.addr}</td>
+                    <td><button onclick="selectClient('${c.id}', '${c.name}')">控制</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function selectClient(id, name) {
+            selectedId = id;
+            document.getElementById('console-section').style.display = 'block';
+            document.getElementById('current-target').innerText = `正在操作: ${name} (${id})`;
+            document.getElementById('output').innerText = '终端就绪...\n';
+        }
+
+        async function sendCommand() {
+            const cmd = document.getElementById('cmd-input').value;
+            if (!cmd || !selectedId) return;
+
+            const output = document.getElementById('output');
+            output.innerText += `\n> ${cmd}\n正在执行...`;
+
+            try {
+                const res = await fetch('/api/send_cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id: selectedId, cmd: cmd})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    output.innerText += `\n${data.output}`;
+                } else {
+                    output.innerText += `\n错误: ${data.msg}`;
+                }
+            } catch (e) {
+                output.innerText += `\n请求失败`;
+            }
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // 定时刷新列表
+        setInterval(fetchClients, 5000);
+        fetchClients();
+    </script>
+</body>
+</html>
